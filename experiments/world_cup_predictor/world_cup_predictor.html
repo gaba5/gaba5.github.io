@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>World Cup Predictor | Sebastien</title>
+  <meta name="description" content="A Poisson goals model fitted on international results since 2000, used to forecast the 2026 World Cup and then checked against all 104 matches." />
+  <meta property="og:title" content="World Cup Predictor | Sebastien" />
+  <meta property="og:description" content="A Poisson goals model fitted on international results since 2000, used to forecast the 2026 World Cup and then checked against all 104 matches." />
+  <meta property="og:url" content="https://sebastienlorentz.com/experiments/world_cup_predictor/world_cup_predictor.html" />
+  <meta property="og:type" content="article" />
+  <link rel="stylesheet" href="../../assets/css/main.css?v=3" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath:  [['$', '$']],
+        displayMath: [['$$', '$$']],
+        packages:    {'[+]': ['ams']}
+      },
+      options: {
+        skipHtmlTags: ['script','noscript','style','textarea','pre','code']
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-brand" href="/">Home</a>
+    <ul class="nav-links">
+      <li><a href="/projects/">Projects</a></li>
+      <li><a href="/experiments/" class="active">Experiments</a></li>
+      <li><a href="/about.html">About</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main>
+
+  <a class="back-link" href="/experiments/">&larr; All experiments</a>
+
+  <div class="project-header">
+    <h1>World Cup Predictor</h1>
+    <p style="color:var(--text-dim); margin-bottom:0;">
+      A goals model built from twenty five years of international results, used to forecast the
+      2026 World Cup match by match.
+    </p>
+    <div class="project-meta">
+      <span>Jul 2026</span>
+      <span>Python</span>
+      <span><a href="https://github.com/sebastienlorentz/sebastienlorentz.github.io/tree/main/experiments/world_cup_predictor" target="_blank" rel="noopener">GitHub &nearr;</a></span>
+    </div>
+    <div class="tag-list">
+      <span class="tag">Poisson</span>
+      <span class="tag">Python</span>
+      <span class="tag">forecasting</span>
+    </div>
+  </div>
+
+  <h2>The model</h2>
+
+  <p>
+    The model gives every team an attack and a defence strength, learned from past results, and
+    uses them to work out the odds of any scoreline in a future match. Applied to every fixture in
+    the World Cup and simulated across the bracket a few thousand times, it produces a forecast for
+    the whole tournament. It is fixed before the 2026 World Cup starts, so it predicts the
+    tournament rather than fitting it after the fact.
+  </p>
+
+  <p>
+    The strengths come from a Poisson model. Goals scored by each side are modelled as
+    independent Poisson counts with a log link:
+  </p>
+
+  <p>
+    $$\log \lambda_{ij} = \mu + \alpha_i - \delta_j + h \cdot \mathbb{1}[\text{not neutral}]$$
+  </p>
+
+  <p>
+    Every team gets two numbers, an attack strength $\alpha$ and a defensive weakness $\delta$.
+    For a given match the model pairs the home side's attack with the away side's defence, adds the
+    intercept $\mu$ and a home advantage $h$ when the tie is not on neutral ground, and turns that
+    into an expected goal count for each team. Goals are taken to arrive at that rate, which fixes
+    the probability of every scoreline. The outer product of the two teams' distributions is a grid
+    over all scorelines, and summing its lower triangle, diagonal and upper triangle gives the win,
+    draw and loss probabilities.
+  </p>
+
+  <h2>The data</h2>
+
+  <p>
+    Results, scorers and shootouts all come from Mart J&uuml;risoo's
+    <a href="https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017" target="_blank" rel="noopener">international football results</a>
+    dataset, which covers every recognised international since 1872. The one other input is
+    FIFA's published table for slotting the eight best third-placed teams into the round of 32,
+    which the whole-tournament simulation later needs.
+  </p>
+
+  <p>
+    We take international results from 2000 onwards, 23,933 matches, restricted to the 211 FIFA
+    member associations. Membership is derived from the data rather than from a list: playing a
+    qualifier or a World Cup is what membership means in practice. That drops regions,
+    territories, unrecognised states and diaspora sides, none of which can reach a World Cup.
+  </p>
+
+  <p>
+    Every match carries the same weight, whether it is a friendly or a World Cup final. Qualifying
+    is regional, so friendlies are the main occasion on which teams from different continents meet,
+    and that cross-continental evidence is a lot of what the model relies on them for. We keep the
+    match type label only to stratify the scores at the end.
+  </p>
+
+  <h2>Fitting and scoring</h2>
+
+  <p>
+    The data splits at the 2022 opening fixture. Everything before it trains the model, and
+    everything from there to June 2026, some 3,513 matches, is held back to tune it. Tuning on
+    that whole span rather than only the 64 World Cup fixtures inside it gives far more to work
+    with. The 2026 tournament sits outside both.
+  </p>
+
+  <p>
+    The fit is a single call, and its two global coefficients read directly.
+    <code>exp(intercept)</code> is the goal rate for a fixture between two average teams on
+    neutral ground, and <code>exp(home_adv)</code> is the multiplicative home effect:
+  </p>
+
+  <div class="notebook">
+    <div class="cell code_cell">
+      <div class="input_area"><pre>params = model.fit(df, model.CUTOFF_2022)
+
+print(f"baseline goal rate  {np.exp(params.intercept):.2f} per team per match")
+print(f"home advantage      x{np.exp(params.home_adv):.2f} when not on neutral ground")</pre></div>
+      <div class="output_subarea output_stream"><pre>baseline goal rate  1.05 per team per match
+home advantage      x1.36 when not on neutral ground</pre></div>
+    </div>
+  </div>
+
+  <p>
+    Calibration comes before any single score, since it catches systematic bias that a summary
+    number hides: whether each outcome is predicted about as often as it actually happens.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 1. Out of sample calibration. Mean predicted probability against observed frequency, 3513 matches.</caption>
+  <thead>
+<tr><th>outcome</th><th>predicted</th><th>actual</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >home win</th>
+      <td >0.471</td>
+      <td >0.471</td>
+    </tr>
+    <tr>
+      <th >draw</th>
+      <td >0.216</td>
+      <td >0.235</td>
+    </tr>
+    <tr>
+      <th >away win</th>
+      <td >0.313</td>
+      <td >0.294</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    The home-win probability matches its frequency exactly. Draws are where it slips: the model
+    expects 21.6% of matches to finish level, where 23.5% actually do. That gap does not close
+    under any of the tuning below, so it looks structural rather than like something more tuning
+    could fix. We come back to it under Dixon Coles.
+  </p>
+
+  <p>
+    A single score needs a baseline to beat. The floor predicts the unconditional outcome rates
+    for every fixture, knowing nothing about the teams, and failing to beat it would mean the
+    fitted strengths add nothing at all. Brier and log loss are both proper scores and lower is
+    better; accuracy is included for readability and is not proper.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 2. Holdout scores against the base rates floor, 3513 matches. Brier and log loss lower is better, accuracy higher.</caption>
+  <thead>
+<tr><th>metric</th><th>model</th><th>base rates</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >brier</th>
+      <td >0.5112</td>
+      <td >0.6365</td>
+    </tr>
+    <tr>
+      <th >log loss</th>
+      <td >0.8688</td>
+      <td >1.0549</td>
+    </tr>
+    <tr>
+      <th >accuracy</th>
+      <td >0.6009</td>
+      <td >0.4708</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <h2>Two corrections</h2>
+
+  <p>
+    The fit above treats a result from 2000 as worth exactly as much as one from 2022, so each
+    team's coefficients carry two decades of squad turnover. Weighting each match by
+    <code>0.5 ** (age / half_life)</code>, measured back from the cutoff, fades that out. It is
+    the only weighting in the fit, and the half life is the one number we sweep.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 3. Half life sweep, scored on the holdout. Columns are days, None is no decay.</caption>
+  <thead>
+<tr><th>metric</th><th>None</th><th>3000</th><th>2000</th><th>1500</th><th>1000</th><th>700</th><th>500</th><th>350</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >brier</th>
+      <td >0.5112</td>
+      <td >0.5048</td>
+      <td >0.5034</td>
+      <td >0.5029</td>
+      <td >0.5033</td>
+      <td >0.5052</td>
+      <td >0.5086</td>
+      <td >0.5138</td>
+    </tr>
+    <tr>
+      <th >log loss</th>
+      <td >0.8688</td>
+      <td >0.8586</td>
+      <td >0.8563</td>
+      <td >0.8552</td>
+      <td >0.8558</td>
+      <td >0.8588</td>
+      <td >0.8647</td>
+      <td >0.8743</td>
+    </tr>
+    <tr>
+      <th >accuracy</th>
+      <td >0.6009</td>
+      <td >0.6035</td>
+      <td >0.6035</td>
+      <td >0.6043</td>
+      <td >0.6049</td>
+      <td >0.6015</td>
+      <td >0.5995</td>
+      <td >0.5929</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    The curve is shallow, but every decayed fit beats the undecayed one, and the Brier score
+    is lowest at a half life of 1500 days:
+  </p>
+
+  <div class="notebook">
+    <div class="cell code_cell">
+      <div class="input_area"><pre>best = min(half_lives[1:], key=lambda h: sweep[str(h)]["brier"])
+tuned = model.fit(df, model.CUTOFF_2022, best)</pre></div>
+      <div class="output_subarea output_stream"><pre>half life 1500 days</pre></div>
+    </div>
+  </div>
+
+  <p>
+    The draw deficit survives the decay. Its cause is the independence assumption: real matches
+    drift towards a level score in a way that two independent Poisson counts cannot express, and
+    the effect concentrates in low scoring games. Dixon and Coles (1997) correct it by
+    multiplying four cells of the scoreline grid by a factor built from a single parameter
+    $\rho$:
+  </p>
+
+  <p>
+    $$\tau(0,0) = 1 - \lambda\mu\rho \qquad \tau(0,1) = 1 + \lambda\rho$$
+    $$\tau(1,0) = 1 + \mu\rho \qquad \tau(1,1) = 1 - \rho$$
+  </p>
+
+  <p>
+    Negative $\rho$ moves probability onto 0-0 and 1-1 and off 1-0 and 0-1, which is to say
+    onto draws. The four factors are built so that total probability is unchanged, so nothing
+    needs renormalising afterwards:
+  </p>
+
+<pre><code>def tau(home_goals, away_goals, rate_home, rate_away, rho):
+    factor = np.ones(np.broadcast(home_goals, away_goals, rate_home, rate_away).shape)
+    factor = np.where((home_goals == 0) &amp; (away_goals == 0), 1 - rate_home * rate_away * rho, factor)
+    factor = np.where((home_goals == 0) &amp; (away_goals == 1), 1 + rate_home * rho, factor)
+    factor = np.where((home_goals == 1) &amp; (away_goals == 0), 1 + rate_away * rho, factor)
+    factor = np.where((home_goals == 1) &amp; (away_goals == 1), 1 - rho, factor)
+    return factor</code></pre>
+
+  <p>
+    We estimate $\rho$ in a second stage, by maximum likelihood on the training matches with
+    the goal rates held fixed. That keeps the regression intact. A joint fit would mean hand
+    writing the likelihood over 400 parameters, and the bias from holding the rates fixed is
+    second order.
+  </p>
+
+  <div class="notebook">
+    <div class="cell code_cell">
+      <div class="input_area"><pre>dc = model.fit(df, model.CUTOFF_2022, best, dixon_coles=True)</pre></div>
+      <div class="output_subarea output_stream"><pre>rho -0.0238</pre></div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 4. What the Dixon Coles correction does to calibration, per outcome.</caption>
+  <thead>
+<tr><th>outcome</th><th>poisson</th><th>dixon coles</th><th>actual</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >home win</th>
+      <td >0.4651</td>
+      <td >0.4628</td>
+      <td >0.4708</td>
+    </tr>
+    <tr>
+      <th >draw</th>
+      <td >0.2196</td>
+      <td >0.2242</td>
+      <td >0.2348</td>
+    </tr>
+    <tr>
+      <th >away win</th>
+      <td >0.3153</td>
+      <td >0.3130</td>
+      <td >0.2943</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    The correction closes roughly a third of the draw gap. Its effect on the pooled holdout scores
+    is small, a Brier of 0.5026 against 0.5029, because most matches are never close enough for the
+    four adjusted cells to make a difference. What it mainly buys is a better-shaped forecast, not
+    a better aggregate score.
+  </p>
+
+  <p>
+    One more split is worth making before the settings are fixed. The pooled score is dominated
+    by friendlies and qualifiers, where lopsided fixtures make outcomes easy to call.
+    Stratifying by match type separates skill on the target distribution from skill on the easy
+    tail.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 5. Holdout scores split by match type. The World Cup column is 64 matches.</caption>
+  <thead>
+<tr><th>metric</th><th>World Cup</th><th>FIFA</th><th>Friendly</th><th>OTHER</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >brier</th>
+      <td >0.5922</td>
+      <td >0.4565</td>
+      <td >0.5317</td>
+      <td >0.5099</td>
+    </tr>
+    <tr>
+      <th >log loss</th>
+      <td >1.0192</td>
+      <td >0.7802</td>
+      <td >0.8993</td>
+      <td >0.8671</td>
+    </tr>
+    <tr>
+      <th >accuracy</th>
+      <td >0.5312</td>
+      <td >0.6451</td>
+      <td >0.5848</td>
+      <td >0.5952</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    World Cup matches are the hardest column by a clear margin, which is no surprise when a
+    tournament of qualified teams has no easy fixtures to pad the score. That makes 0.5922 the
+    yardstick for the 2026 result; the pooled 0.5026 is flattered by all the lopsided games.
+  </p>
+
+  <h2>The 2026 tournament</h2>
+
+  <p>
+    That settles the last of the choices. The final model uses a half life of 1500 days and the
+    Dixon Coles correction. Refitting it with the cutoff moved to the 2026 opening fixture lets it
+    see every match up to the day before the tournament, the whole holdout included. No 2026 result
+    goes into the fit.
+  </p>
+
+  <div class="notebook">
+    <div class="cell code_cell">
+      <div class="input_area"><pre>current = model.fit(df, model.CUTOFF_2026, best, dixon_coles=True)</pre></div>
+      <div class="output_subarea output_stream"><pre>trained on 23829 matches, up to 2026-06-10
+half life 1500 days, rho -0.0168
+goal rate  1.05 per team per match
+home adv   x1.29 when not on neutral ground</pre></div>
+    </div>
+  </div>
+
+  <p>
+    This fit gives each side's rating going into the tournament, its attack plus defence on the log
+    scale. The numbers mean little on their own, so the table is worth reading for the order of the
+    teams and for how far each has moved since 2022. That movement is not just recent form either,
+    as the 1500 day half life keeps the 2022 tournament in the picture.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 6. Rating and rank movement over the 2022 to 2026 cycle.</caption>
+  <thead>
+<tr><th>team</th><th>rank</th><th>was</th><th>moved</th><th>before</th><th>after</th><th>change</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >Argentina</th>
+      <td >1</td>
+      <td >2</td>
+      <td >1</td>
+      <td >2.581</td>
+      <td >2.632</td>
+      <td >0.051</td>
+    </tr>
+    <tr>
+      <th >Brazil</th>
+      <td >2</td>
+      <td >1</td>
+      <td >-1</td>
+      <td >3.044</td>
+      <td >2.591</td>
+      <td >-0.453</td>
+    </tr>
+    <tr>
+      <th >Spain</th>
+      <td >3</td>
+      <td >3</td>
+      <td >0</td>
+      <td >2.557</td>
+      <td >2.589</td>
+      <td >0.032</td>
+    </tr>
+    <tr>
+      <th >England</th>
+      <td >4</td>
+      <td >4</td>
+      <td >0</td>
+      <td >2.381</td>
+      <td >2.429</td>
+      <td >0.048</td>
+    </tr>
+    <tr>
+      <th >France</th>
+      <td >5</td>
+      <td >6</td>
+      <td >1</td>
+      <td >2.330</td>
+      <td >2.336</td>
+      <td >0.006</td>
+    </tr>
+    <tr>
+      <th >Portugal</th>
+      <td >6</td>
+      <td >5</td>
+      <td >-1</td>
+      <td >2.356</td>
+      <td >2.325</td>
+      <td >-0.031</td>
+    </tr>
+    <tr>
+      <th >Colombia</th>
+      <td >7</td>
+      <td >11</td>
+      <td >4</td>
+      <td >2.160</td>
+      <td >2.220</td>
+      <td >0.060</td>
+    </tr>
+    <tr>
+      <th >Netherlands</th>
+      <td >8</td>
+      <td >7</td>
+      <td >-1</td>
+      <td >2.247</td>
+      <td >2.174</td>
+      <td >-0.073</td>
+    </tr>
+    <tr>
+      <th >Belgium</th>
+      <td >9</td>
+      <td >9</td>
+      <td >0</td>
+      <td >2.198</td>
+      <td >2.159</td>
+      <td >-0.039</td>
+    </tr>
+    <tr>
+      <th >Germany</th>
+      <td >10</td>
+      <td >8</td>
+      <td >-2</td>
+      <td >2.204</td>
+      <td >2.152</td>
+      <td >-0.052</td>
+    </tr>
+    <tr>
+      <th >Uruguay</th>
+      <td >11</td>
+      <td >12</td>
+      <td >1</td>
+      <td >2.079</td>
+      <td >2.000</td>
+      <td >-0.079</td>
+    </tr>
+    <tr>
+      <th >Italy</th>
+      <td >12</td>
+      <td >10</td>
+      <td >-2</td>
+      <td >2.189</td>
+      <td >1.981</td>
+      <td >-0.208</td>
+    </tr>
+    <tr>
+      <th >Morocco</th>
+      <td >13</td>
+      <td >27</td>
+      <td >14</td>
+      <td >1.571</td>
+      <td >1.962</td>
+      <td >0.392</td>
+    </tr>
+    <tr>
+      <th >Denmark</th>
+      <td >14</td>
+      <td >13</td>
+      <td >-1</td>
+      <td >2.067</td>
+      <td >1.943</td>
+      <td >-0.124</td>
+    </tr>
+    <tr>
+      <th >Croatia</th>
+      <td >15</td>
+      <td >14</td>
+      <td >-1</td>
+      <td >1.857</td>
+      <td >1.897</td>
+      <td >0.040</td>
+    </tr>
+    <tr>
+      <th >Switzerland</th>
+      <td >16</td>
+      <td >15</td>
+      <td >-1</td>
+      <td >1.835</td>
+      <td >1.858</td>
+      <td >0.023</td>
+    </tr>
+    <tr>
+      <th >Ecuador</th>
+      <td >17</td>
+      <td >18</td>
+      <td >1</td>
+      <td >1.698</td>
+      <td >1.827</td>
+      <td >0.129</td>
+    </tr>
+    <tr>
+      <th >Japan</th>
+      <td >18</td>
+      <td >29</td>
+      <td >11</td>
+      <td >1.537</td>
+      <td >1.798</td>
+      <td >0.261</td>
+    </tr>
+    <tr>
+      <th >Norway</th>
+      <td >19</td>
+      <td >30</td>
+      <td >11</td>
+      <td >1.479</td>
+      <td >1.753</td>
+      <td >0.274</td>
+    </tr>
+    <tr>
+      <th >Austria</th>
+      <td >20</td>
+      <td >33</td>
+      <td >13</td>
+      <td >1.436</td>
+      <td >1.703</td>
+      <td >0.267</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    The tournament itself is then scored on all 104 matches.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 7. The 2026 World Cup, 104 matches, scored against the floor and against the 2022 World Cup stratum of the holdout.</caption>
+  <thead>
+<tr><th>metric</th><th>model</th><th>base rates</th><th>2022 holdout</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >brier</th>
+      <td >0.4829</td>
+      <td >0.6359</td>
+      <td >0.5922</td>
+    </tr>
+    <tr>
+      <th >log loss</th>
+      <td >0.8226</td>
+      <td >1.0538</td>
+      <td >1.0192</td>
+    </tr>
+    <tr>
+      <th >accuracy</th>
+      <td >0.6731</td>
+      <td >0.4712</td>
+      <td >0.5312</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    The result is better than the 2022 column on all three metrics, with 0.6731 accuracy
+    against a 0.4712 floor. This is not evidence that the model improved. A single tournament of
+    104 matches is a small sample, and the 2026 knockout draw was less even than 2022, so much
+    of the margin is the tournament rather than the model. What the number does show is that the
+    model still beats its floor by a wide margin on data that went into no part of the tuning.
+  </p>
+
+  <p>
+    The matches it got wrong say more than the aggregate score. These are the ones it gave
+    the lowest probability to the outcome that actually happened, so a low <code>given</code>
+    means it was confident and wrong.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 8. The ten matches the model got most wrong. Given is the probability it put on what happened.</caption>
+  <thead>
+<tr><th>date</th><th>home_team</th><th>away_team</th><th>score</th><th>p_home</th><th>p_draw</th><th>p_away</th><th>outcome</th><th>given</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >2026-06-15</th>
+      <td >Spain</td>
+      <td >Cape Verde</td>
+      <td >0-0</td>
+      <td >0.852</td>
+      <td >0.112</td>
+      <td >0.036</td>
+      <td >draw</td>
+      <td >0.112</td>
+    </tr>
+    <tr>
+      <th >2026-06-20</th>
+      <td >Ecuador</td>
+      <td >Curaçao</td>
+      <td >0-0</td>
+      <td >0.839</td>
+      <td >0.124</td>
+      <td >0.037</td>
+      <td >draw</td>
+      <td >0.124</td>
+    </tr>
+    <tr>
+      <th >2026-07-05</th>
+      <td >Brazil</td>
+      <td >Norway</td>
+      <td >1-2</td>
+      <td >0.623</td>
+      <td >0.223</td>
+      <td >0.155</td>
+      <td >away win</td>
+      <td >0.155</td>
+    </tr>
+    <tr>
+      <th >2026-06-13</th>
+      <td >Qatar</td>
+      <td >Switzerland</td>
+      <td >1-1</td>
+      <td >0.087</td>
+      <td >0.162</td>
+      <td >0.752</td>
+      <td >draw</td>
+      <td >0.162</td>
+    </tr>
+    <tr>
+      <th >2026-06-23</th>
+      <td >England</td>
+      <td >Ghana</td>
+      <td >0-0</td>
+      <td >0.739</td>
+      <td >0.187</td>
+      <td >0.074</td>
+      <td >draw</td>
+      <td >0.187</td>
+    </tr>
+    <tr>
+      <th >2026-06-17</th>
+      <td >Portugal</td>
+      <td >DR Congo</td>
+      <td >1-1</td>
+      <td >0.710</td>
+      <td >0.201</td>
+      <td >0.089</td>
+      <td >draw</td>
+      <td >0.201</td>
+    </tr>
+    <tr>
+      <th >2026-06-21</th>
+      <td >Uruguay</td>
+      <td >Cape Verde</td>
+      <td >2-2</td>
+      <td >0.677</td>
+      <td >0.227</td>
+      <td >0.096</td>
+      <td >draw</td>
+      <td >0.227</td>
+    </tr>
+    <tr>
+      <th >2026-06-24</th>
+      <td >South Africa</td>
+      <td >South Korea</td>
+      <td >1-0</td>
+      <td >0.233</td>
+      <td >0.308</td>
+      <td >0.459</td>
+      <td >home win</td>
+      <td >0.233</td>
+    </tr>
+    <tr>
+      <th >2026-06-15</th>
+      <td >Saudi Arabia</td>
+      <td >Uruguay</td>
+      <td >1-1</td>
+      <td >0.108</td>
+      <td >0.245</td>
+      <td >0.647</td>
+      <td >draw</td>
+      <td >0.245</td>
+    </tr>
+    <tr>
+      <th >2026-06-29</th>
+      <td >Germany</td>
+      <td >Paraguay</td>
+      <td >1-1</td>
+      <td >0.575</td>
+      <td >0.245</td>
+      <td >0.180</td>
+      <td >draw</td>
+      <td >0.245</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    Eight of the ten are draws, and seven of those are a strong favourite held by a weaker side.
+    This is the same draw deficit from earlier, this time landing on the matches the model was most
+    confident about. Dixon Coles raises draw probabilities across the board, but these fixtures
+    needed far more than the average lift, and one global $\rho$ has no way to give the confident
+    games extra weight.
+  </p>
+
+  <h2>The knockout bracket</h2>
+
+  <p>
+    The knockout stage needs nothing more than a working match model. The 2026 bracket is held as
+    a directed graph, one node per fixture and an edge from each tie to the one its winner feeds.
+    A topological sort gives the order to play them in, so a tie is reached only once both its
+    feeders have produced a winner, and the single sink is the final.
+  </p>
+
+  <div class="notebook">
+    <div class="cell code_cell">
+      <div class="input_area"><pre>graph = model.bracket(model.knockout_ties(final_test))
+odds = model.simulate_bracket(graph, current, runs=10_000)</pre></div>
+      <div class="output_subarea output_stream"><pre>31 fixtures, 30 edges</pre></div>
+    </div>
+  </div>
+
+  <p>
+    The round of 32 pairings are the real ones, and the tree above them is recovered from who
+    met whom in each later round. This is fixed tournament structure rather than hindsight about
+    results, since the shape of the draw was set before the tournament began. Scorelines are
+    sampled from the full grid rather than the win, draw and loss summary, and a level result is
+    settled by a coin flip, since shootouts are close to unpredictable.
+  </p>
+
+  <figure>
+    <img src="assets/figure1.png" alt="Knockout bracket with each tie labelled by its most likely winner and shaded by that probability" style="display:block; width:100%; height:auto; margin:0 auto;" />
+    <figcaption>
+      <strong>Figure 1.</strong> The bracket before any of it was played, simulated 10,000
+      times. Each tie shows the team most likely to come out of it, shaded by that probability.
+      Later rounds show whoever is most likely to occupy the slot, which is why no team owns a
+      node outright.
+    </figcaption>
+  </figure>
+
+  <p>
+    Argentina is the favourite at 17%, and no team clears a fifth. The field is flat because the
+    model carries a 30% draw rate and settles shootouts on a coin flip, so a favourite's edge in
+    any single tie is small and compounds slowly over five rounds.
+  </p>
+
+  <figure>
+    <img src="assets/figure2.png" alt="The same bracket filled in with actual results, colour coded by how close the model was" style="display:block; width:100%; height:auto; margin:0 auto;" />
+    <figcaption>
+      <strong>Figure 2.</strong> The same tree with the tournament filled in, shaded by how
+      close the model got on each tie. The bold line traces Spain's route to the trophy.
+    </figcaption>
+  </figure>
+
+  <p>
+    The shading has four states rather than a plain right and wrong. A tie that finished level went
+    to penalties, which the model treats as a coin flip by construction, so losing one is not a
+    modelling error and is not counted as one. Setting those aside, the model called <strong>24 of 27 non shootout
+    ties</strong>: three with the exact scoreline, twenty one with the right team through, four
+    lost on penalties and three wrong. One of the three wrong ones is the final itself.
+  </p>
+
+  <h2>Simulating the whole tournament</h2>
+
+  <p>
+    Everything above starts from the real round of 32, so every number in it is conditional on
+    the group stage having gone as it did. Argentina's 17% is really the chance given that they
+    topped their group and landed in that half of the draw. A team that went out in the groups
+    has a probability of zero, which is correct after the fact but useless as a forecast.
+  </p>
+
+  <p>
+    Running the whole tournament from scratch drops that conditioning. We simulate all seventy two
+    group matches, rank each group on points, then goal difference, then goals scored, take the
+    eight best third-placed teams, and play the knockout out from there.
+  </p>
+
+  <p>
+    Three pieces of tournament structure have to be supplied, though none of them is a guess. The
+    groups come straight from the fixtures: each team plays the three others in its group, so the
+    match graph splits into twelve components of four. The round of 32 template is read off the
+    real bracket. And which slot each group winner meets depends on which eight of the twelve
+    groups the qualifying third-placed teams come from, so it is set by FIFA's published table, one
+    of 495 possible mappings.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 9. Probability of winning the tournament, simulated from the group stage against simulated from the real round of 32.</caption>
+  <thead>
+<tr><th>team</th><th>from the group stage</th><th>from the real round of 32</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >Brazil</th>
+      <td >0.126</td>
+      <td >0.121</td>
+    </tr>
+    <tr>
+      <th >Spain</th>
+      <td >0.125</td>
+      <td >0.118</td>
+    </tr>
+    <tr>
+      <th >Argentina</th>
+      <td >0.112</td>
+      <td >0.166</td>
+    </tr>
+    <tr>
+      <th >England</th>
+      <td >0.089</td>
+      <td >0.093</td>
+    </tr>
+    <tr>
+      <th >France</th>
+      <td >0.073</td>
+      <td >0.071</td>
+    </tr>
+    <tr>
+      <th >Portugal</th>
+      <td >0.070</td>
+      <td >0.059</td>
+    </tr>
+    <tr>
+      <th >Belgium</th>
+      <td >0.051</td>
+      <td >0.054</td>
+    </tr>
+    <tr>
+      <th >Colombia</th>
+      <td >0.048</td>
+      <td >0.059</td>
+    </tr>
+    <tr>
+      <th >Germany</th>
+      <td >0.047</td>
+      <td >0.052</td>
+    </tr>
+    <tr>
+      <th >Netherlands</th>
+      <td >0.045</td>
+      <td >0.050</td>
+    </tr>
+    <tr>
+      <th >Morocco</th>
+      <td >0.027</td>
+      <td >0.024</td>
+    </tr>
+    <tr>
+      <th >Uruguay</th>
+      <td >0.025</td>
+      <td >0.000</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    Placing the two columns side by side shows what the conditioning was doing. Argentina falls
+    from 16.6% to 11.2% once they have to play through the group stage rather than start past
+    it, and Uruguay drops from 2.5% to zero, having gone out in the groups. Spain, who went on to
+    win the whole thing, sat at 12.5% before a ball was kicked, a thousandth of a point behind
+    Brazil.
+  </p>
+
+  <h2>The morning of the final</h2>
+
+  <p>
+    Everything above holds the model at the day before the tournament, which is what a fair
+    forecast requires. This last section asks a different question: what would the model have
+    said on 19 July, having seen the whole tournament except the match about to be played?
+  </p>
+
+  <p>
+    The cutoff moves to the final itself, so the fit sees all 103 preceding matches. Nothing
+    else changes. Spain and Argentina each arrive with six more matches on their record than the
+    frozen model had.
+  </p>
+
+  <div class="notebook">
+    <div class="cell code_cell">
+      <div class="input_area"><pre>eve = model.fit(df, model.FINAL_2026, best, dixon_coles=True)</pre></div>
+      <div class="output_subarea output_stream"><pre>trained on 23932 matches, up to 2026-07-18
+rho -0.0176, against -0.0168 before the tournament</pre></div>
+    </div>
+  </div>
+
+  <p>
+    This fit has seen almost the whole tournament, so it is used only for the forecast below and
+    its ratings are not comparable with the earlier ones. The final is still held out, so the
+    prediction is out of sample, though one match is more a demonstration than a test.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 10. The final, forecast before the tournament and on the morning of the match. It finished 1-0 to Spain after extra time.</caption>
+  <thead>
+<tr><th>outcome</th><th>before the tournament</th><th>morning of the final</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >Spain win</th>
+      <td >0.335</td>
+      <td >0.366</td>
+    </tr>
+    <tr>
+      <th >draw</th>
+      <td >0.306</td>
+      <td >0.304</td>
+    </tr>
+    <tr>
+      <th >Argentina win</th>
+      <td >0.359</td>
+      <td >0.330</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    Six matches of evidence flip the favourite. Before the tournament the model put Argentina
+    ahead by 2.4 points; on the morning of the final it put Spain ahead by 3.6. Both forecasts
+    are close to a three way split, which is what a final between the sides ranked first and
+    third should produce.
+  </p>
+
+  <div class="table-wrap">
+<table>
+  <caption>Table 11. Most likely scorelines for the final under both fits, showing every scoreline in either top six.</caption>
+  <thead>
+<tr><th>scoreline</th><th>before</th><th>final morning</th></tr>
+</thead>
+  <tbody>
+    <tr>
+      <th >1-1</th>
+      <td >0.137</td>
+      <td >0.137</td>
+    </tr>
+    <tr>
+      <th >1-0</th>
+      <td >0.125</td>
+      <td >0.131</td>
+    </tr>
+    <tr>
+      <th >0-0</th>
+      <td >0.128</td>
+      <td >0.125</td>
+    </tr>
+    <tr>
+      <th >0-1</th>
+      <td >0.131</td>
+      <td >0.122</td>
+    </tr>
+    <tr>
+      <th >2-1</th>
+      <td >0.069</td>
+      <td >0.073</td>
+    </tr>
+    <tr>
+      <th >2-0</th>
+      <td >0.065</td>
+      <td >0.072</td>
+    </tr>
+    <tr>
+      <th >1-2</th>
+      <td >0.072</td>
+      <td >0.068</td>
+    </tr>
+    <tr>
+      <th >0-2</th>
+      <td >0.071</td>
+      <td >0.063</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <p>
+    It finished 1-0 to Spain after extra time, the second most likely scoreline on the morning
+    of the match at 13.1%, with the right result also at second favourite. On a match the fit
+    never saw, that is a close call, though a single result carries little weight either way.
+  </p>
+
+</main>
+
+<footer>
+  <p>Sebastien Lorentz, hosted on GitHub Pages</p>
+</footer>
+
+<script src="/assets/js/tags.js" defer></script>
+
+</body>
+</html>

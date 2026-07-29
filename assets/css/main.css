@@ -357,6 +357,79 @@ figcaption {
 }
 .juniper-output:empty { display: none; }
 
+/* ── Tables (caption above, the way a paper labels one) ── */
+.table-wrap { overflow-x: auto; margin: 1.8rem 0; }
+.table-wrap table {
+  border-collapse: collapse;
+  font-family:     var(--mono);
+  font-size:       0.68rem;
+  line-height:     1.5;
+  min-width:       100%;
+}
+.table-wrap caption {
+  caption-side:  top;
+  font-family:   var(--serif);
+  font-size:     0.82rem;
+  line-height:   1.5;
+  color:         var(--text-dim);
+  text-align:    left;
+  margin-bottom: 0.6rem;
+}
+.table-wrap th,
+.table-wrap td {
+  padding:     0.32rem 0.75rem;
+  text-align:  right;
+  white-space: nowrap;
+}
+.table-wrap thead th {
+  border-bottom: 1px solid var(--border);
+  font-weight:   400;
+  color:         var(--text-dim);
+}
+.table-wrap thead th:first-child,
+.table-wrap tbody th {
+  text-align:  left;
+  font-weight: 400;
+  padding-left: 0;
+}
+.table-wrap tbody tr + tr th,
+.table-wrap tbody tr + tr td { border-top: 1px solid var(--surface); }
+
+/* ── Notebook (nbconvert --template basic output, wrapped in .notebook) ── */
+.notebook { margin: 1.4rem 0; }        /* spaces each embedded chunk from surrounding prose */
+.notebook .prompt { display: none; }   /* ponytail: hides In[n]/Out[n], so no two-column layout needed */
+.notebook .cell + .cell { margin-top: 1.4rem; }
+.notebook .input_area {
+  background:    var(--code-bg);
+  border:        1px solid var(--border);
+  border-radius: 4px;
+  overflow-x:    auto;
+}
+.notebook .input_area pre {
+  background: none;
+  border:     none;
+  margin:     0;
+  padding:    1.1rem 1.3rem;
+  font-size:  0.78rem;
+}
+.notebook .output_subarea pre {
+  background: none;
+  border:     none;
+  margin:     0;
+  padding:    0.7rem 1.3rem;
+  font-size:  0.75rem;
+  color:      var(--text-dim);
+}
+.notebook .output_error pre { color: #a33; }
+.notebook .output_png img,
+.notebook .output_svg svg {
+  display:   block;
+  max-width: 100%;
+  height:    auto;
+  margin:    1rem auto;
+}
+.notebook .output_html { overflow-x: auto; font-size: 0.8rem; }
+
 /* ── Figure row ── */
 figure { margin: 1.8rem 0; }
 .figure-row {
